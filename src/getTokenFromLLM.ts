@@ -78,7 +78,7 @@ export async function getTokenFromLLM(contents: string) {
       "messages": [
         {
           "role": "system",
-          "content": "You are an AI agent that processes tweets to determine if they are signaling a buy opportunity for a Solana-based token. Your goal is to detect whether the tweet suggests buying a token (either explicitly or implicitly) and extract the Solana token address if present. If the tweet is not about a Solana-based token, return null. Note : return just the tokenaddress or null if not found.No other should be returned.",
+          "content": "You are an AI agent that processes tweets to determine if they are signaling a buy opportunity for a Solana-based token. Your goal is to detect whether the tweet suggests buying a token (either explicitly or implicitly) and extract the Solana token address if present.Only return if it says its a bullish. If the tweet is not about a Solana-based token, return null. Note : return just the tokenaddress or null if not found.No other should be returned.",
         },
         {
           "role": "user",
