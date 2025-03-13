@@ -7,11 +7,12 @@ import { getTokenFromLLM } from "./getTokenFromLLM";
 
 async function main() {
 try {
-    const tweet  = await getTweets('karthikS17');
-    if (!tweet?.contents) {
-      throw new Error("Tweet contents are undefined");
-    }
-    const tokenAddress = await getTokenFromLLM(tweet.contents);
+    const tweet  = await getTweets('karthik6989');
+    // if (!tweet?.contents) {
+    //   console.log('No tweets found.');
+    //   return;
+    // }
+    const tokenAddress = await getTokenFromLLM(tweet?.contents ?? "");
     console.log(tokenAddress);
     
   } catch (error) {
