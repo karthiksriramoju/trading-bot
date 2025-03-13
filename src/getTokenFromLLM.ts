@@ -77,8 +77,12 @@ export async function getTokenFromLLM(contents: string) {
       "model": "deepseek/deepseek-r1:free",
       "messages": [
         {
+          "role": "system",
+          "content": "You are an AI agent that processes tweets to determine if they are signaling a buy opportunity for a Solana-based token. Your goal is to detect whether the tweet suggests buying a token (either explicitly or implicitly) and extract the Solana token address if present. If the tweet is not about a Solana-based token, return null. Note : return just the tokenaddress or null if not found.No other should be returned.",
+        },
+        {
           "role": "user",
-          "content": "From the above content. find the token address and return it back. i dont want any other text, just return the token address. The content is gonna be twitter post. if the post says about some coin / meme coin that gonna boost up or going up in the price. lets buy it. if the tweet is something like it. just return the token address if that is mentioned in the tweet."+contents,
+          "content": contents,
         }
       ]
     })
