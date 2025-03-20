@@ -1,85 +1,60 @@
-import bs58 from "bs58";
-import { Connection, Keypair, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js'
-import { NATIVE_MINT, getAssociatedTokenAddress } from '@solana/spl-token'
-import axios from 'axios'
-import { API_URLS } from '@raydium-io/raydium-sdk-v2'
-const isV0Tx = true;
-const connection = new Connection(process.env.RPC_URL!);
+import { Transaction, VersionedTransaction, sendAndConfirmTransaction, PublicKey } from '@solana/web3.js';
+import { Keypair, Connection } from '@solana/web3.js';
+import axios from 'axios';
+import { API_URLS } from '@raydium-io/raydium-sdk-v2';
+import bs58 from 'bs58';
 
-const owner = Keypair.fromSecretKey(bs58.decode(process.env.PRIVATE_KEY!));
+const owner: Keypair = Keypair.fromSecretKey(bs58.decode(process.env.PRIVATE_KEY!));
+const connection: Connection = new Connection(process.env.RPC_URL!, 'confirmed');
 
-const slippage = 5;
+const SWAP_HOST: string = API_URLS.SWAP_HOST;
+const PRIORITY_FEE_URL: string = `${API_URLS.BASE_HOST}${API_URLS.PRIORITY_FEE}`;
+const SOL_MINT: string = 'So11111111111111111111111111111111111111112'; // Native SOL mint address
 
-export async function swap(tokenAddress: string, amount: number) {
- 
-    const { data } = await axios.get<{
-        id: string
-        success: boolean
-        data: { default: { vh: number; h: number; m: number } }
-      }>(`${API_URLS.BASE_HOST}${API_URLS.PRIORITY_FEE}`);
+export async function swap(outputMint: string, amountInLamports: number): Promise<void> {
+    try {
+        const slippageBps: number = 200; // 2% slippage (increased from 0.5%)
+        const txVersion: string = 'V0';
 
-    const { data: swapResponse } = await axios.get(
-        `${
-          API_URLS.SWAP_HOST
-        }/compute/swap-base-in?inputMint=${NATIVE_MINT}&outputMint=${tokenAddress}&amount=${amount}&slippageBps=${
-          slippage * 100}&txVersion=V0`
-    );
+        // Fetch priority fee
+        const { data: priorityData } = await axios.get(PRIORITY_FEE_URL);
+        const computeUnitPriceMicroLamports: string = String(priorityData.data.default.h);
 
-    console.log("Swap Response Data:", swapResponse);
-    const { data: swapTransactions } = await axios.post<{
-        id: string
-        version: string
-        success: boolean
-        data: { transaction: string }[]
-      }>(`${API_URLS.SWAP_HOST}/transaction/swap-base-in`, {
-        computeUnitPriceMicroLamports: String(data.data.default.h),
-        swapResponse,
-        txVersion: 'V0',
-        wallet: owner.publicKey.toBase58(),
-        wrapSol: true,
-        unwrapSol: false,
-    })
+        // Get swap quote
+        const { data: swapResponse } = await axios.get(
+            `${SWAP_HOST}/compute/swap-base-in?inputMint=${SOL_MINT}&outputMint=${outputMint}&amount=${amountInLamports}&slippageBps=${slippageBps}&txVersion=${txVersion}`
+        );
 
-    console.log("Swap Transactions Data:", swapTransactions);
+        console.log('Swap Response:', swapResponse);
 
-    const ata = await getAssociatedTokenAddress(new PublicKey(tokenAddress), owner.publicKey);
+        // Serialize transaction
+        const { data: swapTransactions } = await axios.post(
+            `${SWAP_HOST}/transaction/swap-base-in`,
+            {
+                computeUnitPriceMicroLamports,
+                swapResponse,
+                txVersion,
+                wallet: owner.publicKey.toBase58(),
+                wrapSol: true, // Wrap SOL to wSOL
+                unwrapSol: false, // Do not unwrap wSOL to SOL
+            }
+        );
 
-    console.log({
-        computeUnitPriceMicroLamports: String(data.data.default.h),
-        swapResponse,
-        txVersion: 'V0',
-        wallet: owner.publicKey.toBase58(),
-        wrapSol: true,
-        unwrapSol: false,
-        // outputMint: ata.toBase58()
-    })
-    console.log(swapTransactions)
-    const allTxBuf = swapTransactions.data.map((tx) => Buffer.from(tx.transaction, 'base64'))
-    const allTransactions = allTxBuf.map((txBuf) =>
-      isV0Tx ? VersionedTransaction.deserialize(txBuf) : Transaction.from(txBuf)
-    )
+        console.log('Swap Transactions:', swapTransactions);
 
-    let idx = 0
-    for (const tx of allTransactions) {
-        idx++
-        const transaction = tx as VersionedTransaction
-        transaction.sign([owner])
+        // Deserialize transactions
+        const allTxBuf: Buffer[] = swapTransactions.data.map((tx: { transaction: string }) => Buffer.from(tx.transaction, 'base64'));
+        const allTransactions: VersionedTransaction[] = allTxBuf.map((txBuf : any) => VersionedTransaction.deserialize(txBuf));
 
-        const txId = await connection.sendTransaction(tx as VersionedTransaction, { skipPreflight: true })
-        console.log("after sending txn");
-        const { lastValidBlockHeight, blockhash } = await connection.getLatestBlockhash({
-          commitment: 'finalized',
-        })
-        console.log(`${idx} transaction sending..., txId: ${txId}`)
-        await connection.confirmTransaction(
-          {
-            blockhash,
-            lastValidBlockHeight,
-            signature: txId,
-          },
-          'confirmed'
-        )
-        console.log(`${idx} transaction confirmed`)
+        // Sign and execute transactions
+        for (const transaction of allTransactions) {
+            transaction.sign([owner]);
+            const txId: string = await connection.sendTransaction(transaction, { skipPreflight: true });
+            console.log(`Transaction sent, txId: ${txId}`);
+            await connection.confirmTransaction(txId, 'confirmed');
+            console.log(`Transaction confirmed`);
+        }
+    } catch (error) {
+        console.error('Swap failed:', error);
     }
-
 }
